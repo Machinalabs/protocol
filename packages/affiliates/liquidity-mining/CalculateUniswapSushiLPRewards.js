@@ -206,7 +206,7 @@ async function _updatePayoutAtBlock(
   let lpTokenSupplyAtSnapshotInSushi = toBN(0);
   let syntheticsInPoolAtSnapshotInSushi = toBN(0);
 
-  if (blockNumber >= SUSHI_POOL_BLOCK_CREATION) {
+  if (blockNumber > SUSHI_POOL_BLOCK_CREATION) {
     // Get the total supply of Sushiswap Pool tokens at the given snapshot's block number.
     lpTokenSupplyAtSnapshotInSushi = toBN(await sushiswapPool.methods.totalSupply().call(undefined, blockNumber));
 
@@ -233,43 +233,56 @@ async function _updatePayoutAtBlock(
   // Get the given holders balance at the given block. Generate an array of promises to resolve in parallel.
   const uniswapBalanceResults = await Promise.map(
     Object.keys(uniswapShareHolderPayout),
-    shareHolder => uniswapPool.methods.balanceOf(shareHolder).call(undefined, blockNumber),
+    async shareHolder => {
+      return {
+        shareHolder,
+        balance: await uniswapPool.methods.balanceOf(shareHolder).call(undefined, blockNumber)
+      };
+    },
     {
-      concurrency: 50 // Keep infura happy about the number of incoming requests.
+      concurrency: 100 // Keep infura happy about the number of incoming requests.
     }
   );
 
   // Get the given holders balance at the given block. Generate an array of promises to resolve in parallel.
   let sushiSwapBalanceResults = [];
-  if (blockNumber >= SUSHI_POOL_BLOCK_CREATION) {
+  if (blockNumber > SUSHI_POOL_BLOCK_CREATION) {
     sushiSwapBalanceResults = await Promise.map(
       Object.keys(sushiswapShareHolderPayout),
-      shareHolder => sushiswapPool.methods.balanceOf(shareHolder).call(undefined, blockNumber),
+      async shareHolder => {
+        return {
+          shareHolder,
+          balance: await sushiswapPool.methods.balanceOf(shareHolder).call(undefined, blockNumber)
+        };
+      },
       {
-        concurrency: 50 // Keep infura happy about the number of incoming requests.
+        concurrency: 100 // Keep infura happy about the number of incoming requests.
       }
     );
   }
-
   // Also, get the position information for all shareholders.
   const tokenShareHolderPositionResults = await Promise.map(
     Object.keys(shareHolderPayout),
-    shareHolder => empContract.methods.positions(shareHolder).call(undefined, blockNumber),
+    async shareHolder => {
+      return {
+        shareHolder,
+        position: await empContract.methods.positions(shareHolder).call(undefined, blockNumber)
+      };
+    },
     {
-      concurrency: 50 // Keep infura happy about the number of incoming requests.
+      concurrency: 100 // Keep infura happy about the number of incoming requests.
     }
   );
-
   // For each balance result, calculate their associated payment addition. The data structures below are used to store
   // and compute the "effective" ballance. this is the minimum of the token sponsors sponsor position OR redeemable
   // synths from their LP position.
   let shareHolderEffectiveSnapshotBalance = {};
   let cumulativeEffectiveSnapshotBalance = toBN("0");
-  [...uniswapBalanceResults, ...sushiSwapBalanceResults].forEach(function(resultItem, index) {
+  [...uniswapBalanceResults, ...sushiSwapBalanceResults].forEach(function(resultItem) {
     // If the given shareholder had no BLP tokens at the given block, skip them.
-    if (resultItem === "0") return;
+    if (resultItem.balance === "0") return;
     // The holders fraction is the number of BPTs at the block divided by the total supply at that block.
-    const shareHolderLpBalanceAtSnapshot = toBN(resultItem);
+    const shareHolderLpBalanceAtSnapshot = toBN(resultItem.balance);
 
     // Calculate how many synths the sponsors LP tokens are redeemable for at this given snapshot.
     const shareHolderRedeemableSynthsFromLpShareAtSnapshot = shareHolderLpBalanceAtSnapshot
@@ -277,8 +290,11 @@ async function _updatePayoutAtBlock(
       .div(toBN("1"));
 
     // Calculate how many synths the sponsors has created at the current snapshot.
+    const tokenShareHolderPositionInfo = tokenShareHolderPositionResults.find(
+      s => s.shareHolder == resultItem.shareHolder
+    );
     const shareHolderShareHolderSynthsOutstandingAtSnapshot = toBN(
-      tokenShareHolderPositionResults[index].tokensOutstanding.rawValue
+      tokenShareHolderPositionInfo.position.tokensOutstanding.rawValue
     );
 
     // The sponsors "effective" balance is the min of these two numbers.
@@ -288,7 +304,7 @@ async function _updatePayoutAtBlock(
     );
 
     // Store this effective balance for computation.
-    const shareHolderAddress = Object.keys(shareHolderPayout)[index];
+    const shareHolderAddress = resultItem.shareHolder;
     shareHolderEffectiveSnapshotBalance[shareHolderAddress] = minEffectiveSynthBalance;
     // Also, store the cumulative effective balance across all sponsors for the current snapshot. This is used next to
     // find the pro-rata distribution over this effective snapshot balance.
@@ -408,7 +424,6 @@ async function _fetchSushiswapPoolInfo(poolAddress) {
 // Implement async callback to enable the script to be run by truffle or node.
 async function Main(callback) {
   try {
-    console.log("sushiPoolAddress", argv.sushiPoolAddress);
     // Pull the parameters from process arguments. Specifying them like this lets tests add its own.
     await calculateUniswapLPRewards(
       argv.fromBlock,

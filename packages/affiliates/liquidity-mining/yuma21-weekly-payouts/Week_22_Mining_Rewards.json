@@ -1,0 +1,17 @@
+{
+  "week": 22,
+  "fromBlock": 12993808,
+  "toBlock": 13039098,
+  "poolAddress": "0x184225f78cff8266dea2ec9d0968ab4f475878a5",
+  "empAddress": "0xdb2e7f6655de37822c3020a8988351cc76cadad5",
+  "syntheticTokenAddress": "0x3108C33b6Fb38EFEDAeFd8b5f7ca01D5F5c7372d",
+  "blocksPerSnapshot": 256,
+  "umaPerWeek": 88.15,
+  "shareHolderPayout": {
+    "0x613a2c6e41f71422bff8cc9aa22e18487ac64d5e": "3.076604366725320727",
+    "0x96ad8e69caedf57fb3904d6a86bad4696d3e622b": "9.889085464474245699",
+    "0x9bfd373f1e624d61bffe54348375ef48f185967a": "4.307146338599018905",
+    "0x9bff659296de06a7af943482af5e2f220f8d17cc": "28.494752960925268275",
+    "0xad2b08f878c0be4c4162a72bbf7c0f547f93bd9f": "42.382410869276145588"
+  }
+}
